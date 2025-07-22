@@ -1,15 +1,12 @@
 import GridSearch
-import RandomSearch
 import graphviz
 import pandas
-import matplotlib.pyplot as plt
 import sklearn.model_selection
-from ParameterSearch import ParameterSearch
-
 
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 from sklearn import tree
 from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
+from sklearn.feature_selection import SequentialFeatureSelector
 
 ########################### FUNKCJE #######################################
 
@@ -27,23 +24,33 @@ def detect_and_drop_id(table):
 
     return table.drop(columns=potential_ids), potential_ids
 
-def tree_to_dot_with_mapping(clf, feature_names, class_names):
+def tree_to_dot_with_mapping(clf, feature_names, class_names,all_feature_names=None):
+    if all_feature_names is None:
+        all_feature_names = feature_names
+
     dot_str = 'digraph Tree {\n'
     dot_str += 'node [shape=box, style="rounded, filled", color="lightblue", fontname="helvetica"];\n'
-    used_bases = set()
 
     def split_feature(feature_name):
         if "_" in feature_name:
             return feature_name.split("_", 1)
         return feature_name, None
 
-    def recurse(node, parent=None, parent_label=None):
+    # przygotuj mapę wszystkich kategorii dla bazowych cech one-hot
+    base_categories = {}
+    for feat in all_feature_names:
+        base, cat = split_feature(feat)
+        if cat is not None:
+            base_categories.setdefault(base, set()).add(cat)
+
+    def recurse(node, parent=None, parent_label=None, allowed_categories_map=None):
         nonlocal dot_str
+        if allowed_categories_map is None:
+            allowed_categories_map = {b: cats.copy() for b, cats in base_categories.items()}
 
         if clf.tree_.feature[node] != -2:
             feat = feature_names[clf.tree_.feature[node]]
             base, category = split_feature(feat)
-
             threshold = clf.tree_.threshold[node]
             left = clf.tree_.children_left[node]
             right = clf.tree_.children_right[node]
@@ -53,30 +60,34 @@ def tree_to_dot_with_mapping(clf, feature_names, class_names):
                 dot_str += f'"{parent}" -> "{node}" [label="{parent_label}"];\n'
 
             if category and abs(threshold - 0.5) < 1e-5:
-                if base in used_bases:
+                # aktualizuj allowed_categories_map dla dzieci
+                allowed_left = {k: v.copy() for k, v in allowed_categories_map.items()}
+                allowed_right = {k: v.copy() for k, v in allowed_categories_map.items()}
+
+                # lewa gałąź: kategorie bez 'category'
+                allowed_left[base].discard(category)
+                # prawa gałąź: tylko 'category'
+                allowed_right[base] = {category}
+
+                # etykiety
+                cats = sorted(allowed_left[base])
+                if len(cats) == 0:
                     left_label = f"{base} ≠ {category}"
-                    right_label = f"{base} = {category}"
+                elif len(cats) == 1:
+                    left_label = f"{cats[0]}"
                 else:
-                    used_bases.add(base)
-                    other_cat = [
-                        c.split("_", 1)[1]
-                        for c in feature_names
-                        if c.startswith(base + "_") and c.split("_", 1)[1] != category
-                    ]
-                    if other_cat:
-                        if len(other_cat) == 1:
-                            left_label = other_cat[0]
-                        else:
-                            left_label = f"{base} in {{{', '.join(other_cat)}}}"
-                    else:
-                        left_label = f"{base} ≠ {category}"
-                    right_label = category
+                    left_label = f"{base} in {{{', '.join(cats)}}}"
+                right_label = f"{category}"
+
+                recurse(left, node, left_label, allowed_left)
+                recurse(right, node, right_label, allowed_right)
             else:
                 left_label = f"≤ {threshold:.2f}"
                 right_label = f"> {threshold:.2f}"
 
-            recurse(left, node, left_label)
-            recurse(right, node, right_label)
+                recurse(left, node, left_label, allowed_categories_map)
+                recurse(right, node, right_label, allowed_categories_map)
+
         else:
             value = clf.tree_.value[node]
             class_index = int(value.argmax())
@@ -89,15 +100,16 @@ def tree_to_dot_with_mapping(clf, feature_names, class_names):
     dot_str += '}'
     return dot_str
 
+
 ########################### LOGIKA APLIKACJI  ############################
 
 
 #TODO 1: pliki csv należy zakodować na liczby
-data = pandas.read_csv("test.csv")
+data = pandas.read_csv("drug200.csv")
 
 #wybranie kolumn decyzyjnych
 print(data.columns.tolist())
-decision_column = input("Wybierz kolumne decyzyjną")
+decision_column = input("Wybierz kolumnę decyzyjną")
 
 data, dropped_ids = detect_and_drop_id(data)
 print("Usunięto kolumny identyfikatorów:", dropped_ids)
@@ -143,33 +155,37 @@ print("Test set accuracy: {:.2f}".format(accuracy))
 features = pandas.DataFrame(dtc.feature_importances_, index=X.columns)
 print(features.head(15))
 
-best_features = []
-for column in X.columns:
-    X_temp = X.drop(columns=[column])
-    X_train_temp, X_test_temp, y_train_temp, y_test_temp = sklearn.model_selection.train_test_split(X_temp,y,  test_size=0.3, stratify=y)
-    dtc_temp = tree.DecisionTreeClassifier(random_state=17)
-    dtc_temp = dtc_temp.fit(X_train_temp, y_train_temp)
-    y_pred_temp = dtc_temp.predict(X_test_temp)
-    temp_accuracy = accuracy_score(y_test_temp, y_pred_temp)
-    print(f"Usunięcie cechy {column}: accuracy = {temp_accuracy:.2f}")
+print("--------------------------------")
+sfs = SequentialFeatureSelector(
+    dtc,
+    direction="backward",
+    n_features_to_select="auto",
+    scoring="accuracy",
+    cv=5,
+    n_jobs=-1
+)
+sfs.fit(X_train,y_train)
 
-    # if temp_accuracy >= accuracy - 0.01:
-    #     best_features.append(column)
-    #     print(column)
+selected_columns = X.columns[sfs.get_support()]
+print("Wybrane cechy:", list(selected_columns))
 
-X_best = X.drop(columns=best_features)
+print("--------------------------------")
 
-x_train_best, x_test_best, y_train_best, y_test_best = sklearn.model_selection.train_test_split(
-    X_best, y, test_size=0.3, stratify=y, random_state=1)
+# --- Nowe dane zredukowane ---
+X_train_best = X_train[selected_columns]
+X_test_best = X_test[selected_columns]
 
+# --- GridSearch tylko na zbiorze treningowym ---
 search = GridSearch.GridSearch()
-search.fit(X_best,y)
+search.fit(X_train_best,y_train)
 print("Najlepsze parametry:", search.get_best_params())
-dtc_best = search.get_best_model()
-dtc_best.fit(x_train_best, y_train_best)
-y_pred_best = dtc_best.predict(x_test_best)
 
-best_accuracy = accuracy_score(y_test_best, y_pred_best)
+# --- Finalny model i ocena ---
+dtc_best = search.get_best_model()
+dtc_best.fit(X_train_best, y_train)
+y_pred_best = dtc_best.predict(X_test_best)
+
+best_accuracy = accuracy_score(y_test, y_pred_best)
 print(f"Accuracy (wszystkie cechy): {accuracy:.2f}")
 print(f"Accuracy (wybrane cechy): {best_accuracy:.2f}")
 
@@ -178,8 +194,9 @@ print(f"Accuracy (wybrane cechy): {best_accuracy:.2f}")
 
 dot_data = tree_to_dot_with_mapping(
     dtc_best,
-    feature_names=X_best.columns,
-    class_names=label_encoder.inverse_transform(range(len(label_encoder.classes_)))
+    feature_names=X_train_best.columns,
+    class_names=label_encoder.inverse_transform(range(len(label_encoder.classes_))),
+    all_feature_names=final_data.drop(columns=decision_column).columns
 )
 
 graph = graphviz.Source(dot_data)
