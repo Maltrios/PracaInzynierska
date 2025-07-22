@@ -30,9 +30,9 @@ def detect_and_drop_id(table):
 def tree_to_dot_with_mapping(clf, feature_names, class_names):
     dot_str = 'digraph Tree {\n'
     dot_str += 'node [shape=box, style="rounded, filled", color="lightblue", fontname="helvetica"];\n'
+    used_bases = set()
 
     def split_feature(feature_name):
-        # Dzieli np. "Cholesterol_HIGH" -> ("Cholesterol", "HIGH")
         if "_" in feature_name:
             return feature_name.split("_", 1)
         return feature_name, None
@@ -48,26 +48,29 @@ def tree_to_dot_with_mapping(clf, feature_names, class_names):
             left = clf.tree_.children_left[node]
             right = clf.tree_.children_right[node]
 
-            # Etykieta węzła
             dot_str += f'"{node}" [label="{base}\n≤ {threshold:.2f}"];\n'
             if parent is not None:
                 dot_str += f'"{parent}" -> "{node}" [label="{parent_label}"];\n'
 
-            # Jeśli to zakodowana cecha one-hot
             if category and abs(threshold - 0.5) < 1e-5:
-                # Szukamy innych kategorii
-                other_cat = [
-                    c.split("_", 1)[1]
-                    for c in feature_names
-                    if c.startswith(base + "_") and c.split("_", 1)[1] != category
-                ]
-
-                if other_cat:
-                    left_label = f"{base} in {{{', '.join(other_cat)}}}"
-                else:
+                if base in used_bases:
                     left_label = f"{base} ≠ {category}"
-
-                right_label = category
+                    right_label = f"{base} = {category}"
+                else:
+                    used_bases.add(base)
+                    other_cat = [
+                        c.split("_", 1)[1]
+                        for c in feature_names
+                        if c.startswith(base + "_") and c.split("_", 1)[1] != category
+                    ]
+                    if other_cat:
+                        if len(other_cat) == 1:
+                            left_label = other_cat[0]
+                        else:
+                            left_label = f"{base} in {{{', '.join(other_cat)}}}"
+                    else:
+                        left_label = f"{base} ≠ {category}"
+                    right_label = category
             else:
                 left_label = f"≤ {threshold:.2f}"
                 right_label = f"> {threshold:.2f}"
@@ -75,7 +78,6 @@ def tree_to_dot_with_mapping(clf, feature_names, class_names):
             recurse(left, node, left_label)
             recurse(right, node, right_label)
         else:
-            # Liść: wyświetlamy klasę
             value = clf.tree_.value[node]
             class_index = int(value.argmax())
             label = class_names[class_index]
@@ -87,13 +89,11 @@ def tree_to_dot_with_mapping(clf, feature_names, class_names):
     dot_str += '}'
     return dot_str
 
-
-
 ########################### LOGIKA APLIKACJI  ############################
 
 
 #TODO 1: pliki csv należy zakodować na liczby
-data = pandas.read_csv("drug200.csv")
+data = pandas.read_csv("test.csv")
 
 #wybranie kolumn decyzyjnych
 print(data.columns.tolist())
@@ -109,7 +109,7 @@ categorical_column = data.select_dtypes(include=["object", "category"]).columns.
 # print(categorical_column)
 
 
-encoder = OneHotEncoder(drop='if_binary',sparse_output=False)
+encoder = OneHotEncoder(drop=None,sparse_output=False)
 encoded_array = encoder.fit_transform(data[categorical_column])
 encoded_cols = encoder.get_feature_names_out(categorical_column)
 
@@ -162,8 +162,9 @@ X_best = X.drop(columns=best_features)
 x_train_best, x_test_best, y_train_best, y_test_best = sklearn.model_selection.train_test_split(
     X_best, y, test_size=0.3, stratify=y, random_state=1)
 
-search = RandomSearch.RandomSearch()
+search = GridSearch.GridSearch()
 search.fit(X_best,y)
+print("Najlepsze parametry:", search.get_best_params())
 dtc_best = search.get_best_model()
 dtc_best.fit(x_train_best, y_train_best)
 y_pred_best = dtc_best.predict(x_test_best)
