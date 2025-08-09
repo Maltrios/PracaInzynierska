@@ -26,7 +26,7 @@ class RandomSearch(ParameterSearch):
             cv=self.cv,
             scoring=self.scoring,
             random_state=1,
-            n_jobs=-1
+            n_jobs=1
         )
         self.search.fit(X, y)
 

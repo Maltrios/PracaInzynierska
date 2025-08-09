@@ -1,7 +1,6 @@
 from ParameterSearch import ParameterSearch
 from sklearn.model_selection import GridSearchCV
 from sklearn.tree import DecisionTreeClassifier
-from scipy.stats import randint, uniform
 
 class GridSearch(ParameterSearch):
 
@@ -22,6 +21,6 @@ class GridSearch(ParameterSearch):
             param_grid=self.param_grid,
             cv=self.cv,
             scoring=self.scoring,
-            n_jobs=-1
+            n_jobs=1
         )
         self.search.fit(X, y)

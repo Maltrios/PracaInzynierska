@@ -1,0 +1,5 @@
+.env
+csvFIle
+__pycache__
+.idea
+storage
