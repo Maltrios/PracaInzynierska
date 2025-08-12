@@ -3,3 +3,4 @@ csvFIle
 __pycache__
 .idea
 storage
+.venv

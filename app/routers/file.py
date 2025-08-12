@@ -100,7 +100,7 @@ async def set_target_column(request: TargetColumnRequest,background_tasks: Backg
     if request.save_file:
         db = SessionLocal()
 
-        storage_dir = "./storage"
+        storage_dir = f"./storage/{user.id}"
         os.makedirs(storage_dir, exist_ok=True)
         dest_path = os.path.join(storage_dir, original_filename)
 
@@ -109,7 +109,7 @@ async def set_target_column(request: TargetColumnRequest,background_tasks: Backg
         new_file = UserFile(
             user_id=user.id,
             filename=original_filename,
-            storage_path=dest_path,
+            storage_path=os.path.join(f"{user.id}", original_filename),
             size_bytes=os.path.getsize(dest_path),
             expires_at = datetime.datetime.now() + datetime.timedelta(days=30)
         )
