@@ -1,6 +1,20 @@
 version: "3.8"
 
 services:
+  python-service:
+    container_name: python-service
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    depends_on:
+      - action-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - /c/Users/kamil/Desktop/Inżynierka/app/storage:/app/storage
+    environment:
+      ACTION_URL: http://action-service:8081/action
+
   db:
     image: postgres:16
     container_name: my_postgres
@@ -26,6 +40,21 @@ services:
     volumes:
       - /c/Users/kamil/Desktop/Inżynierka/app/storage:/app/storage
       - ./cleanup-service/.env:/app/.env
+
+  action-service:
+    container_name: action-service
+    build:
+      context: ./action-service   # katalog z main.go i Dockerfile
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    environment:
+      DBConnectionString: postgres://user:password@db:5432/db_users?sslmode=disable
+      ACTION_LIMIT: 5
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./action-service/.env:/app/.env
 
 volumes:
   db_data:

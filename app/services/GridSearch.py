@@ -1,4 +1,4 @@
-from ParameterSearch import ParameterSearch
+from services.ParameterSearch import ParameterSearch
 from sklearn.model_selection import GridSearchCV
 from sklearn.tree import DecisionTreeClassifier
 

@@ -14,8 +14,8 @@ SessionLocal = sessionmaker(bind=db, autocommit=False, autoflush=False)
 Base = declarative_base()
 
 def get_db():
-    db = SessionLocal()
+    database = SessionLocal()
     try:
-        yield db
+        yield database
     finally:
-        db.close()
+        database.close()

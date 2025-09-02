@@ -1,4 +1,4 @@
-from ParameterSearch import ParameterSearch
+from .ParameterSearch import ParameterSearch
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.tree import DecisionTreeClassifier
 from scipy.stats import randint, uniform

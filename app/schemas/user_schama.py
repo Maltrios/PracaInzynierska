@@ -24,10 +24,12 @@ class UserUpdate(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str
 
 class TargetColumnRequest(BaseModel):
     target_column: str
+    file_id: int
     type_search: bool
     save_file: bool
 

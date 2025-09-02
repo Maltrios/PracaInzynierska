@@ -15,10 +15,3 @@ func LoadConfig() Config {
 		StorageDirectory:   os.Getenv("StorageDirectory"),
 	}
 }
-
-func getEnv(key string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return "Environment variable " + key + " not set."
-}

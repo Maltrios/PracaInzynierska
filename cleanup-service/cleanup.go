@@ -10,6 +10,17 @@ import (
 	"strings"
 )
 
+func CleanExpiredTokens(db *sql.DB, table string) error {
+	query := fmt.Sprintf("DELETE FROM %s WHERE expires_at < NOW()", table)
+	result, err := db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("error cleaning %s: %w", table, err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	fmt.Println("Removed expired tokens:", rowsAffected, "from", table)
+	return nil
+}
+
 func CleanExpiredFile(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -68,7 +79,7 @@ func CleanExpiredFile(db *sql.DB) error {
 }
 
 func CleanInactiveUsers(db *sql.DB) error {
-	rows, err := db.Exec("DELETE FROM users WHERE last_login < NOW() - INTERVAL '6 Months'")
+	rows, err := db.Exec("DELETE FROM users WHERE last_login < NOW() - INTERVAL '6 month'")
 	if err != nil {
 		return err
 	}
@@ -77,20 +88,32 @@ func CleanInactiveUsers(db *sql.DB) error {
 	return nil
 }
 
-func RunCleanup(config Config) error {
-	db, err := sql.Open("postgres", config.DBConnectionString)
+func CleanTempFiles(db *sql.DB) error {
+	rows, err := db.Exec("DELETE FROM temp_files WHERE created_at < NOW() - INTERVAL '1 hour'")
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	deletedCount, _ := rows.RowsAffected()
+	fmt.Println("Removed not used files from table: temp_files:", deletedCount)
+	return nil
+}
 
-	err = CleanExpiredFile(db)
-	if err != nil {
+func RunCleanup(db *sql.DB) error {
+	if err := CleanExpiredFile(db); err != nil {
+
 		return fmt.Errorf("error cleaning up expired files: %v", err)
 	}
-	err = CleanInactiveUsers(db)
-	if err != nil {
+	if err := CleanInactiveUsers(db); err != nil {
 		return fmt.Errorf("error cleaning up inactive users: %v", err)
+	}
+	if err := CleanExpiredTokens(db, os.Getenv("BLACKLIST_TOKEN_DB_TABLE")); err != nil {
+		return fmt.Errorf("error cleaning up expired tokens (blacklist): %v", err)
+	}
+	if err := CleanExpiredTokens(db, os.Getenv("REFRESH_TOKEN_DB_TABLE")); err != nil {
+		return fmt.Errorf("error cleaning up expired tokens (refreshtoken): %v", err)
+	}
+	if err := CleanTempFiles(db); err != nil {
+		return fmt.Errorf("error cleaning up temp files: %v", err)
 	}
 	fmt.Println("Cleaned complete")
 	return nil

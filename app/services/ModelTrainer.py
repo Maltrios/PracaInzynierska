@@ -1,7 +1,7 @@
 import pandas as pd
 import sklearn
-from GridSearch import GridSearch
-from RandomSearch import RandomSearch
+from .GridSearch import GridSearch
+from .RandomSearch import RandomSearch
 from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
