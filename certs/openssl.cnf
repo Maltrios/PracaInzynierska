@@ -1,0 +1,12 @@
+[ req ]
+distinguished_name = req_distinguished_name
+prompt = yes
+
+[ req_distinguished_name ]
+C =                # Country Name
+ST =               # State or Province Name
+L =                # Locality Name
+O =                # Organization Name
+OU =               # Organizational Unit Name
+CN =               # Common Name
+emailAddress =     # Email Address

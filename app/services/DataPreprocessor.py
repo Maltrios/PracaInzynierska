@@ -37,6 +37,11 @@ class DataPreprocessor:
             raise ValueError("Dataset must have at least 20 rows.")
 
         self.data, self.dropped_ids = detect_and_drop_id(data)
+
+        categorical_columns = self.data.select_dtypes(include=["object", "category"]).columns.tolist()
+        if len(categorical_columns) == 0:
+            raise ValueError("No categorical columns in the data, at least one required")
+
         self.decision_column = None
         self.label_encoder = LabelEncoder()
 

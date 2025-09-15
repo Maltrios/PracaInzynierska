@@ -37,7 +37,7 @@ func TestCleanExpiredTokens(t *testing.T) {
 	_, _ = db.Exec("INSERT INTO blacklisted_tokens (expires_at) VALUES (NOW() - INTERVAL '1 day')")
 	_, _ = db.Exec("INSERT INTO blacklisted_tokens (expires_at) VALUES (NOW() + INTERVAL '1 day')")
 
-	err := CleanExpiredTokens(db, "blacklisted_tokens")
+	err := CleanExpiredTokens(db, "blacklisted_tokens", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestCleanInactiveUsers(t *testing.T) {
 }
 
 func TestCleanExpiredFile(t *testing.T) {
-	db := setupTempTable(t, "user_files", "id SERIAL PRIMARY KEY,storage_path TEXT,  expires_at TIMESTAMP")
+	db := setupTempTable(t, "user_files", "id SERIAL PRIMARY KEY,storage_path TEXT,  expires_at TIMESTAMP, user_id INTEGER")
 	tempDir := t.TempDir()
 	err := os.Setenv("StorageDirectory", tempDir)
 	if err != nil {
@@ -100,8 +100,9 @@ func TestCleanExpiredFile(t *testing.T) {
 		t.Errorf("error writing future file: %v", err)
 	}
 
-	_, _ = db.Exec("INSERT INTO user_files (expires_at, storage_path) VALUES (NOW() - INTERVAL '1 day', $1)", "tempFolder/expired.txt")
-	_, _ = db.Exec("INSERT INTO user_files (expires_at, storage_path) VALUES (NOW() + INTERVAL '5 day', $1)", "tempFolder/future.txt")
+	_, _ = db.Exec("INSERT INTO user_files (expires_at, storage_path, user_id) VALUES (NOW() - INTERVAL '1 day', $1, $2)", "tempFolder/expired.txt", 123)
+	_, _ = db.Exec("INSERT INTO user_files (expires_at, storage_path, user_id) VALUES (NOW() + INTERVAL '5 day', $1, $2)", "tempFolder/future.txt", 123)
+
 	err = CleanExpiredFile(db)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -147,10 +148,10 @@ func TestRunCleanup(t *testing.T) {
 	}(db)
 
 	_, _ = db.Exec("CREATE TEMP TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, last_login TIMESTAMP)")
-	_, _ = db.Exec("CREATE TEMP TABLE IF NOT EXISTS user_files (id SERIAL PRIMARY KEY, storage_path TEXT, expires_at TIMESTAMP)")
+	_, _ = db.Exec("CREATE TEMP TABLE IF NOT EXISTS user_files (id SERIAL PRIMARY KEY, storage_path TEXT, expires_at TIMESTAMP, user_id INTEGER)")
 	_, _ = db.Exec("CREATE TEMP TABLE IF NOT EXISTS blacklist_tokens (id SERIAL PRIMARY KEY, expires_at TIMESTAMP)")
-	_, _ = db.Exec("CREATE TEMP TABLE IF NOT EXISTS refresh_tokens (id SERIAL PRIMARY KEY, expires_at TIMESTAMP)")
-	_, _ = db.Exec("CREATE TEMP TABLE IF NOT EXISTS temp_files (id SERIAL PRIMARY KEY, created_at timestamptz)")
+	_, _ = db.Exec("CREATE TEMP TABLE IF NOT EXISTS refresh_tokens (id SERIAL PRIMARY KEY, expires_at TIMESTAMP, user_id INTEGER)")
+	_, _ = db.Exec("CREATE TEMP TABLE IF NOT EXISTS temp_files (id SERIAL PRIMARY KEY, created_at timestamptz, user_id INTEGER)")
 
 	_, _ = db.Exec("TRUNCATE users, user_files, blacklist_tokens, refresh_tokens, temp_files")
 
@@ -173,12 +174,12 @@ func TestRunCleanup(t *testing.T) {
 
 	_, _ = db.Exec("INSERT INTO users (last_login) VALUES (NOW() - INTERVAL '7 months')")
 	_, _ = db.Exec("INSERT INTO users (last_login) VALUES (NOW())")
-	_, _ = db.Exec("INSERT INTO user_files (expires_at, storage_path) VALUES (NOW() - INTERVAL '1 day', 'expired.txt')")
-	_, _ = db.Exec("INSERT INTO user_files (expires_at, storage_path) VALUES (NOW() + INTERVAL '1 day', 'future.txt')")
+	_, _ = db.Exec("INSERT INTO user_files (expires_at, storage_path, user_id) VALUES (NOW() - INTERVAL '1 day', 'expired.txt', 123)")
+	_, _ = db.Exec("INSERT INTO user_files (expires_at, storage_path, user_id) VALUES (NOW() + INTERVAL '1 day', 'future.txt', 123)")
 	_, _ = db.Exec("INSERT INTO blacklist_tokens (expires_at) VALUES (NOW() - INTERVAL '1 day')")
 	_, _ = db.Exec("INSERT INTO refresh_tokens (expires_at) VALUES (NOW() - INTERVAL '1 day')")
-	_, _ = db.Exec("INSERT INTO temp_files (created_at) VALUES (NOW() - INTERVAL '1 hour')")
-	_, _ = db.Exec("INSERT INTO temp_files (created_at) VALUES (NOW())")
+	_, _ = db.Exec("INSERT INTO temp_files (created_at, user_id) VALUES (NOW() - INTERVAL '1 hour', 123)")
+	_, _ = db.Exec("INSERT INTO temp_files (created_at, user_id) VALUES (NOW(), 123)")
 
 	err = os.Setenv("BLACKLIST_TOKEN_DB_TABLE", "blacklist_tokens")
 	if err != nil {
@@ -264,7 +265,7 @@ func TestIsEmpty(t *testing.T) {
 }
 
 func TestCleanExpiredFile_MissingFile(t *testing.T) {
-	db := setupTempTable(t, "user_files", "id SERIAL PRIMARY KEY, storage_path TEXT, expires_at TIMESTAMP")
+	db := setupTempTable(t, "user_files", "id SERIAL PRIMARY KEY, storage_path TEXT, expires_at TIMESTAMP, user_id INTEGER")
 	defer func(db *sql.DB) {
 		err := db.Close()
 		if err != nil {
@@ -285,15 +286,15 @@ func TestCleanExpiredFile_MissingFile(t *testing.T) {
 }
 
 func TestCleanTempFiles(t *testing.T) {
-	db := setupTempTable(t, "temp_files", "id SERIAL PRIMARY KEY, created_at TIMESTAMP")
+	db := setupTempTable(t, "temp_files", "id SERIAL PRIMARY KEY, created_at TIMESTAMP,  user_id INT")
 	defer func(db *sql.DB) {
 		err := db.Close()
 		if err != nil {
 			t.Errorf("error closing db: %v", err)
 		}
 	}(db)
-	_, _ = db.Exec("INSERT INTO temp_files (created_at) VALUES (NOW() - INTERVAL '1 hour')")
-	_, _ = db.Exec("INSERT INTO temp_files (created_at) VALUES (NOW())")
+	_, _ = db.Exec("INSERT INTO temp_files (created_at, user_id) VALUES (NOW() - INTERVAL '1 hour', NULL)")
+	_, _ = db.Exec("INSERT INTO temp_files (created_at, user_id) VALUES (NOW(), 123)")
 
 	err := CleanTempFiles(db)
 	if err != nil {

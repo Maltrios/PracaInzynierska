@@ -2,16 +2,22 @@ from datetime import timezone, datetime
 
 import pytest
 import os
+import routers.ws
+from anyio import sleep
+from celery_app.tasks import analyse_data
+from models.temp_file_model import TempFile
+from tests.conftest import override_get_db
 
 
 def test_create_user(client):
     response = client.post(
         "/auth/register", json={
               "email": "test@example.com",
-              "password": "string"
+              "password": "Password1!"
             }
         )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201
+    assert response.json() == {'detail': 'User created'}
 
 @pytest.fixture()
 def logged_in_user(client):
@@ -38,7 +44,7 @@ def test_get_user_info(logged_in_user, logout_before,client):
     )
 
     if logout_before:
-        assert response.status_code == 400
+        assert response.status_code == 401
         assert response.json()["detail"] == "Token has been revoked, please login again"
     else:
         assert response.status_code == 200, response.text
@@ -59,13 +65,13 @@ def test_user_update(logged_in_user, logout_before, client):
         "/user/update",
         json={
             "email": "updated_user@example.com",
-            "password": "updated_password"
+            "password": "Updated_password!2"
         },
         headers={"Authorization": f"Bearer {token["access_token"]}"}
     )
 
     if logout_before:
-        assert response.status_code == 400
+        assert response.status_code == 401
         assert response.json()["detail"] == "Token has been revoked, please login again"
     else:
         assert response.status_code == 200, response.text
@@ -87,7 +93,7 @@ def test_refresh_token(logged_in_user, logout_before, client):
     )
 
     if logout_before:
-        assert response.status_code == 400
+        assert response.status_code == 401
         assert response.json() == {"detail": "Refresh token revoked or expired"}
     else:
         assert response.status_code == 200, response.text
@@ -105,11 +111,11 @@ def test_delete_user(logged_in_user, logout_before, client):
     )
 
     if logout_before:
-        assert response.status_code == 400
+        assert response.status_code == 401
         assert response.json()["detail"] == "Token has been revoked, please login again"
     else:
         assert response.status_code == 200
-        assert response.json() =={"message": "User deleted"}
+        assert response.json() =={"detail": "User deleted"}
 
 
 @pytest.mark.parametrize("logout_before", [False, True])
@@ -130,7 +136,7 @@ def test_upload_csv_file_show_target_column(logged_in_user, logout_before, clien
         )
 
     if logout_before:
-        assert response.status_code == 400
+        assert response.status_code == 401
         assert response.json() == {"detail": "Token has been revoked, please login again"}
     else:
         assert response.status_code == 200
@@ -168,7 +174,7 @@ def test_select_decision_column_and_generate_tree(logged_in_user, logout_before,
         logout()
 
     response = client.post(
-        "/file/upload-csv/set_target_column",
+        "/file/start-analysis",
         json={
           "target_column": "Drug",
           "file_id": uploaded_file_id,
@@ -179,32 +185,55 @@ def test_select_decision_column_and_generate_tree(logged_in_user, logout_before,
     )
 
     if logout_before:
-        assert response.status_code == 400
+        assert response.status_code == 401
         assert response.json() == {"detail": "Token has been revoked, please login again"}
     else:
         assert response.status_code == 200
+        db = next(override_get_db())
+        file = db.query(TempFile).filter(TempFile.user_id == 1, TempFile.id == uploaded_file_id).first()
+        assert file is not None
+
+        tmp_path = file.tmp_path
+        original_filename = file.original_filename
+
+        result = analyse_data.run(
+                file_id=file.id,
+                tmp_path=tmp_path,
+                target_column="Drug",
+                save_file=True,
+                user_id=1,
+                original_filename=original_filename,
+                type_search=True,
+                db=db
+            )
+
+        assert result is not None
         expected_prefix = "iVBORw0KGgoAAAANSUhEUgAA"
-        assert response.json()["image_base64"].startswith(expected_prefix)
+        assert result["image_base64"].startswith(expected_prefix)
 
 @pytest.fixture
 def prepare_test_show_and_download_files(logged_in_user, uploaded_file_id,client):
     token, logout = logged_in_user
 
-    response = client.post(
-        "/file/upload-csv/set_target_column",
-        json={
-            "target_column": "Drug",
-            "file_id": uploaded_file_id,
-            "type_search": True,
-            "save_file": True
-        },
-        headers={"Authorization": f"Bearer {token['access_token']}"}
+    db = next(override_get_db())
+    file = db.query(TempFile).filter(TempFile.user_id == 1, TempFile.id == uploaded_file_id).first()
+    assert file is not None
+
+    tmp_path = file.tmp_path
+    original_filename = file.original_filename
+
+    data = analyse_data.run(
+        file_id=file.id,
+        tmp_path=tmp_path,
+        target_column="Drug",
+        save_file=True,
+        user_id=1,
+        original_filename=original_filename,
+        type_search=True,
+        db=db
     )
-
-
-    assert response.status_code == 200
-    data = response.json()
-
+    assert data is not None
+    db.close()
     return {
         "logout": logout,
         "token": token,
@@ -227,7 +256,7 @@ def test_show_user_file(logout_before,prepare_test_show_and_download_files, clie
         )
 
     if logout_before:
-        assert response.status_code == 400
+        assert response.status_code == 401
         assert response.json() == {"detail": "Token has been revoked, please login again"}
     else:
         assert response.status_code == 200
@@ -254,7 +283,7 @@ def test_download_user_file(logout_before,prepare_test_show_and_download_files, 
         )
 
     if logout_before:
-        assert response.status_code == 400
+        assert response.status_code == 401
         assert response.json() == {"detail": "Token has been revoked, please login again"}
     else:
         assert response.status_code == 200

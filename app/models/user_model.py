@@ -11,4 +11,9 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
+
+
     refresh_tokens = relationship("RefreshToken", back_populates="user")
+    user_files = relationship("UserFile", back_populates="user")
+    temp_files = relationship("TempFile", back_populates="user")
+    user_actions = relationship("UserActions", back_populates="user")

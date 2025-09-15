@@ -10,8 +10,15 @@ import (
 	"strings"
 )
 
-func CleanExpiredTokens(db *sql.DB, table string) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE expires_at < NOW()", table)
+func CleanExpiredTokens(db *sql.DB, table string, hasID bool) error {
+	var query string
+
+	if hasID {
+		query = fmt.Sprintf("DELETE FROM %s WHERE expires_at < NOW() OR user_id is NULL", table)
+	} else {
+		query = fmt.Sprintf("DELETE FROM %s WHERE expires_at < NOW()", table)
+	}
+
 	result, err := db.Exec(query)
 	if err != nil {
 		return fmt.Errorf("error cleaning %s: %w", table, err)
@@ -27,7 +34,7 @@ func CleanExpiredFile(db *sql.DB) error {
 		return err
 	}
 
-	rows, err := tx.Query("SELECT id, storage_path from user_files WHERE expires_at < NOW()")
+	rows, err := tx.Query("SELECT id, storage_path from user_files WHERE expires_at < NOW() OR user_id IS NULL")
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -89,7 +96,7 @@ func CleanInactiveUsers(db *sql.DB) error {
 }
 
 func CleanTempFiles(db *sql.DB) error {
-	rows, err := db.Exec("DELETE FROM temp_files WHERE created_at < NOW() - INTERVAL '1 hour'")
+	rows, err := db.Exec("DELETE FROM temp_files WHERE created_at < NOW() - INTERVAL '1 hour' OR user_id IS NULL")
 	if err != nil {
 		return err
 	}
@@ -106,10 +113,10 @@ func RunCleanup(db *sql.DB) error {
 	if err := CleanInactiveUsers(db); err != nil {
 		return fmt.Errorf("error cleaning up inactive users: %v", err)
 	}
-	if err := CleanExpiredTokens(db, os.Getenv("BLACKLIST_TOKEN_DB_TABLE")); err != nil {
+	if err := CleanExpiredTokens(db, os.Getenv("BLACKLIST_TOKEN_DB_TABLE"), false); err != nil {
 		return fmt.Errorf("error cleaning up expired tokens (blacklist): %v", err)
 	}
-	if err := CleanExpiredTokens(db, os.Getenv("REFRESH_TOKEN_DB_TABLE")); err != nil {
+	if err := CleanExpiredTokens(db, os.Getenv("REFRESH_TOKEN_DB_TABLE"), true); err != nil {
 		return fmt.Errorf("error cleaning up expired tokens (refreshtoken): %v", err)
 	}
 	if err := CleanTempFiles(db); err != nil {

@@ -12,8 +12,17 @@ services:
       - "8000:8000"
     volumes:
       - /c/Users/kamil/Desktop/Inżynierka/app/storage:/app/storage
+      - /c/Users/kamil/Desktop/Inżynierka/certs:/app/certs
+      - ./tmp:/tmp
     environment:
       ACTION_URL: http://action-service:8081/action
+      REDIS_URL: redis://redis:6379/0
+    command: >
+      uvicorn main:app 
+      --host 0.0.0.0 
+      --port 8000 
+      --ssl-certfile /app/certs/cert.pem 
+      --ssl-keyfile /app/certs/key.pem
 
   db:
     image: postgres:16
@@ -55,6 +64,28 @@ services:
       - "8081:8081"
     volumes:
       - ./action-service/.env:/app/.env
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  celery-worker:
+    container_name: celery-worker
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    depends_on:
+      - python-service
+      - redis
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_DIR: /app/storage
+    command: >
+      celery -A celery_app.tasks.celery_app worker --loglevel=info --pool=solo
+    volumes:
+      - /c/Users/kamil/Desktop/Inżynierka/app/storage:/app/storage
+      - ./tmp:/tmp
 
 volumes:
   db_data:

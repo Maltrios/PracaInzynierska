@@ -10,7 +10,6 @@ class GridSearch(ParameterSearch):
             'max_depth': [2, 3, 4, 5, None],
             'min_samples_leaf': [1, 5, 10],
             'ccp_alpha': [0.005, 0.01, 0.02, 0.05]
-
         }
         self.cv = cv
         self.scoring = scoring

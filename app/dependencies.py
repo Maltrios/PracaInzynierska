@@ -1,7 +1,7 @@
 import os
 
 from fastapi import Depends, HTTPException, status
-from jose import JWTError, jwt
+from jose import JWTError, jwt, ExpiredSignatureError
 from models.Blacklisted_tokens_model import BlacklistedToken
 from sqlalchemy.orm import Session
 from database import get_db
@@ -21,13 +21,15 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(oauth2_
     db_blacklisted_tokens = db.query(BlacklistedToken).filter(token == BlacklistedToken.token).first()
 
     if db_blacklisted_tokens:
-        raise HTTPException(status_code=400, detail="Token has been revoked, please login again")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked, please login again")
 
     try:
         payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")])
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
     except JWTError:
         raise credentials_exception
 

@@ -1,8 +1,11 @@
+import os
+import tempfile
 from unittest.mock import patch
 from unittest.mock import Mock
 from fastapi.testclient import TestClient
 from database import get_db
 from passlib.handlers.bcrypt import bcrypt
+from routers import file
 from sqlalchemy import create_engine, StaticPool
 from sqlalchemy.orm import sessionmaker
 from models.user_model import *
@@ -50,3 +53,9 @@ def setup_and_teardown():
 
     yield
     Base.metadata.drop_all(bind=engine)
+
+@pytest.fixture(autouse=True)
+def temp_storage(monkeypatch):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        monkeypatch.setenv("STORAGE_DIR", temp_dir)
+        yield temp_dir

@@ -45,8 +45,8 @@ func main() {
 		}
 	}(db)
 
-	myCron := cron.New()
-	_, err = myCron.AddFunc("5 * * * *", func() {
+	myCron := cron.New(cron.WithSeconds())
+	_, err = myCron.AddFunc("0 */5 * * * *", func() {
 		reset(db)
 	})
 	if err != nil {

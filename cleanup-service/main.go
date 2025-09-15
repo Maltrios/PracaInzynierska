@@ -15,7 +15,7 @@ func main() {
 	config := LoadConfig()
 
 	c := cron.New(cron.WithSeconds())
-	_, err = c.AddFunc("* * * * * *", func() {
+	_, err = c.AddFunc("0 */5 * * * *", func() {
 		db, err := sql.Open("postgres", config.DBConnectionString)
 		if err != nil {
 			log.Fatal(err)

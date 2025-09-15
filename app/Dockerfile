@@ -1,31 +1,32 @@
-# Etap 1: baza
 FROM python:3.12-slim
 
-# Zmienne środowiskowe dla Pythona (lepsze logi, brak .pyc)
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Katalog roboczy w kontenerze
 WORKDIR /app
 
-# Zainstaluj Graphviz w systemie
-RUN apt-get update && apt-get install -y graphviz && rm -rf /var/lib/apt/lists/*
-
-# Instalacja zależności systemowych (opcjonalnie: np. psycopg2, curl)
+# Systemowe zależności
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
+    graphviz \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalacja zależności Python
+# Upgrade pip i instalacja zależności Python w jednej warstwie
+# Instalacja zależności w jednej warstwie
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y redis || true \
+    && rm -rf /usr/local/lib/python3.12/site-packages/redis* \
+    && pip install redis==6.4.0 --no-cache-dir --force-reinstall
 
-# Skopiowanie aplikacji
+
+# Skopiowanie kodu
 COPY . .
 
-# Wystawienie portu
+# Wystawienie portu FastAPI
 EXPOSE 8000
 
-# Uruchamianie uvicorn w trybie produkcyjnym
+# Domyślna komenda (można nadpisać w docker-compose dla Celery)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
